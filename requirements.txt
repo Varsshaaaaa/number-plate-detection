@@ -1,8 +1,8 @@
 streamlit
-opencv-python-headless
+opencv-python
 numpy
-ultralytics
 easyocr
-pillow
-pytesseract
+ultralytics
 streamlit-lottie
+requests
+Pillow
