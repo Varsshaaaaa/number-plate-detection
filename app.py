@@ -9,43 +9,141 @@ import requests
 import zipfile
 import os
 from PIL import Image
+import hashlib
+import hmac
+import secrets
+import shutil
+from dotenv import load_dotenv
 
+# Load environment variables from .env file (if any)
+load_dotenv()
 
+# --- Security: Authentication ---
+# Define credentials (in a real app, use environment variables)
+USERS = {
+    "admin": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",  # admin
+    "police": "d7f7a811463157aeba43c2c48544d2cbcab35e22109b9e1cfb905a8517c396ba"  # police123
+}
 
-# UI Enhancements
-st.markdown("""
+def verify_password(username, password):
+    if username not in USERS:
+        return False
+    stored_hash = USERS[username]
+    password_hash = hashlib.sha256(password.encode()).hexdigest()
+    return hmac.compare_digest(stored_hash, password_hash)
+
+# Streamlit page config
+st.set_page_config(page_title="Smart Number Plate Detection", layout="centered")
+
+# --- UI Enhancements ---
+# Color Palette
+primary_color = "#9b87f5"
+secondary_color = "#7E69AB"
+accent_color = "#1EAEDB"
+background_color = "#F1F0FB"
+alert_color = "#ea384c"
+
+# CSS Styles
+st.markdown(f"""
     <style>
-    .title h1 {
+    :root {{
+        --primary-color: {primary_color};
+        --secondary-color: {secondary_color};
+        --accent-color: {accent_color};
+        --background-color: {background_color};
+        --alert-color: {alert_color};
+    }}
+
+    .main {{
+        background-color: var(--background-color);
+        padding: 20px;
+        border-radius: 10px;
+    }}
+
+    .title h1 {{
         font-size: 2.5em;
-        background: linear-gradient(90deg, #1db954, #1ed760);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        animation: fadeIn 1s ease-in-out;
+        color: var(--primary-color);
         text-align: center;
-    }
-    @keyframes fadeIn {
-        from {opacity: 0; transform: translateY(-10px);}
-        to {opacity: 1; transform: translateY(0);}
-    }
-    .stFileUploader > label {
-        border: 2px dashed #1ed760;
+        font-weight: 700;
+        margin-bottom: 1rem;
+        animation: fadeIn 1s ease-in-out;
+    }}
+
+    .card {{
+        background-color: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        margin: 10px 0;
+    }}
+
+    .alert-box {{
+        background-color: var(--alert-color);
+        color: white;
+        padding: 10px;
+        border-radius: 5px;
+        margin: 10px 0;
+        animation: pulse 2s infinite;
+    }}
+
+    @keyframes pulse {{
+        0% {{opacity: 1;}}
+        50% {{opacity: 0.8;}}
+        100% {{opacity: 1;}}
+    }}
+
+    @keyframes fadeIn {{
+        from {{opacity: 0; transform: translateY(-10px);}}
+        to {{opacity: 1; transform: translateY(0);}}
+    }}
+
+    .stFileUploader > label {{
+        border: 2px dashed var(--primary-color);
         padding: 20px;
         border-radius: 10px;
         text-align: center;
         font-size: 18px;
         background-color: #f9fff9;
         transition: all 0.3s ease-in-out;
-    }
-    .stFileUploader > label:hover {
+    }}
+    .stFileUploader > label:hover {{
         background-color: #eaffea;
         transform: scale(1.02);
-    }
+    }}
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="title"><h1>🚘 Smart Number Plate Detection System</h1></div>', unsafe_allow_html=True)
-st.markdown("### Empowering Law Enforcement with Real-time Plate Recognition 🚓")
+# Authentication flow
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
 
+if not st.session_state["authenticated"]:
+    st.markdown('<div class="title"><h1>🚘 Smart Number Plate Detection System</h1></div>', unsafe_allow_html=True)
+    
+    with st.container():
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.subheader("Login")
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        
+        if st.button("Login"):
+            if verify_password(username, password):
+                st.session_state["authenticated"] = True
+                st.session_state["username"] = username
+                st.rerun()
+            else:
+                st.error("Invalid username or password")
+        st.markdown('</div>', unsafe_allow_html=True)
+    st.stop()  # Stop execution if not authenticated
+
+# Main App (only shown when authenticated)
+st.markdown('<div class="title"><h1>🚘 Smart Number Plate Detection System</h1></div>', unsafe_allow_html=True)
+
+# Show logged in user
+st.sidebar.success(f"Logged in as {st.session_state['username']}")
+if st.sidebar.button("Logout"):
+    st.session_state["authenticated"] = False
+    st.experimental_rerun()
 
 # Load Lottie animation
 def load_lottieurl(url: str):
@@ -68,6 +166,57 @@ stolen_plates = {
     "KA09XY9876": "Police Alert - Bengaluru",
     "MH12ZZ0001": "Missing vehicle - Pune"
 }
+
+# --- Security: Input Validation ---
+def validate_file(uploaded_file, file_type="image"):
+    if uploaded_file is None:
+        return False, "No file uploaded"
+
+    # Size validation
+    file_size = uploaded_file.size
+    if file_type == "zip":
+        if file_size > 200 * 1024 * 1024:  # 200 MB limit for ZIP files
+            return False, "File size exceeds 200 MB limit"
+        else:
+            if file_size > 10 * 1024 * 1024:  # 10 MB limit for other files
+                 return False, "File size exceeds 10 MB limit"
+
+
+    # Type validation
+    if file_type == "image":
+        valid_types = ["image/jpeg", "image/png", "image/jpg"]
+        if uploaded_file.type not in valid_types:
+            return False, "Invalid file type. Please upload JPEG or PNG images only."
+    elif file_type == "video":
+        valid_types = ["video/mp4", "video/mov", "video/avi"]
+        if uploaded_file.type not in valid_types:
+            return False, "Invalid file type. Please upload MP4, MOV or AVI videos only."
+    elif file_type == "zip":
+        if uploaded_file.type != "application/zip":
+            return False, "Invalid file type. Please upload ZIP files only."
+
+    return True, "File validation successful"
+
+# --- Secure File Handling ---
+def secure_temp_file(uploaded_file):
+    # Generate secure random filename
+    random_suffix = secrets.token_hex(8)
+    file_extension = os.path.splitext(uploaded_file.name)[1]
+    secure_filename = f"secure_temp_{random_suffix}{file_extension}"
+
+    # Create secure temp file
+    temp_dir = tempfile.mkdtemp()
+    temp_path = os.path.join(temp_dir, secure_filename)
+
+    with open(temp_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+
+    # Return path and cleanup function
+    def cleanup():
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+
+    return temp_path, cleanup
 
 # Sidebar options
 st.sidebar.header("Choose Input Mode")
@@ -98,133 +247,137 @@ def draw_detections(frame, detections):
 
 # Image Input
 if input_type == "Image":
-    uploaded_image = st.file_uploader("Upload an Image", type=["jpg", "jpeg", "png"])
-    if uploaded_image is not None:
-        file_bytes = np.asarray(bytearray(uploaded_image.read()), dtype=np.uint8)
-        frame = cv2.imdecode(file_bytes, 1)
-        detections = detect_number_plate(frame)
-        result_frame = draw_detections(frame, detections)
-        for _, _, _, _, plate_text, is_stolen in detections:
-            if is_stolen:
-                st.error(f"🚨 ALERT: {plate_text} - {stolen_plates[plate_text]}")
-        st.image(result_frame, channels="BGR", caption="Processed Image")
+    with st.container():
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        uploaded_image = st.file_uploader("Upload an Image", type=["jpg", "jpeg", "png"])
+        if uploaded_image is not None:
+            is_valid, message = validate_file(uploaded_image, "image")
+            if not is_valid:
+                st.error(message)
+            else:
+                with st.spinner("Processing image..."):
+                    file_bytes = np.asarray(bytearray(uploaded_image.read()), dtype=np.uint8)
+                    frame = cv2.imdecode(file_bytes, 1)
+                    detections = detect_number_plate(frame)
+                    result_frame = draw_detections(frame, detections)
+                
+                if detections:
+                    tab1, tab2 = st.tabs(["Visualization", "Detailed Results"])
+                    with tab1:
+                        st.image(result_frame, channels="BGR", caption="Processed Image")
+                    with tab2:
+                        for i, (_, _, _, _, plate_text, is_stolen) in enumerate(detections):
+                            st.markdown(f"*Plate #{i+1}:* {plate_text}")
+                            if is_stolen:
+                                st.markdown(f"<div class='alert-box'>🚨 ALERT: {stolen_plates[plate_text]}</div>", unsafe_allow_html=True)
+                            else:
+                                st.success("✓ No alerts for this plate")
+                else:
+                    st.image(result_frame, channels="BGR", caption="Processed Image")
+                    st.info("No license plates detected in this image")
+        st.markdown('</div>', unsafe_allow_html=True)
 
 # Video Input
 elif input_type == "Video":
-    uploaded_video = st.file_uploader("Upload a Video", type=["mp4", "mov", "avi"])
-    if uploaded_video is not None:
-        tfile = tempfile.NamedTemporaryFile(delete=False)
-        tfile.write(uploaded_video.read())
-        cap = cv2.VideoCapture(tfile.name)
-        stframe = st.empty()
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
-            detections = detect_number_plate(frame)
-            result_frame = draw_detections(frame, detections)
-            for _, _, _, _, plate_text, is_stolen in detections:
-                if is_stolen:
-                    st.error(f"🚨 ALERT: {plate_text} - {stolen_plates[plate_text]}")
-            stframe.image(result_frame, channels="BGR")
-        cap.release()
+    with st.container():
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        uploaded_video = st.file_uploader("Upload a Video", type=["mp4", "mov", "avi"])
+        if uploaded_video is not None:
+            is_valid, message = validate_file(uploaded_video, "video")
+            if not is_valid:
+                st.error(message)
+            else:
+                with st.spinner("Processing video..."):
+                    temp_path, cleanup = secure_temp_file(uploaded_video)
+                    try:
+                        cap = cv2.VideoCapture(temp_path)
+                        stframe = st.empty()
+                        alert_container = st.container()
+                        while cap.isOpened():
+                            ret, frame = cap.read()
+                            if not ret:
+                                break
+                            detections = detect_number_plate(frame)
+                            result_frame = draw_detections(frame, detections)
+                            for _, _, _, _, plate_text, is_stolen in detections:
+                                if is_stolen:
+                                    with alert_container:
+                                        st.markdown(f"<div class='alert-box'>🚨 ALERT: {plate_text} - {stolen_plates[plate_text]}</div>", unsafe_allow_html=True)
+                            stframe.image(result_frame, channels="BGR")
+                        cap.release()
+                    finally:
+                        cleanup()
+        st.markdown('</div>', unsafe_allow_html=True)
 
 # Webcam Input
 elif input_type == "Webcam":
-    st.warning("Please run this locally to use webcam feature.")
-    if st.button("Start Webcam"):
-        cap = cv2.VideoCapture(0)
-        stframe = st.empty()
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
-            detections = detect_number_plate(frame)
-            result_frame = draw_detections(frame, detections)
-            for _, _, _, _, plate_text, is_stolen in detections:
-                if is_stolen:
-                    st.error(f"🚨 ALERT: {plate_text} - {stolen_plates[plate_text]}")
-            stframe.image(result_frame, channels="BGR")
-        cap.release()
+    with st.container():
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.warning("Please run this locally to use webcam feature.")
+        if st.button("Start Webcam"):
+            cap = cv2.VideoCapture(0)
+            stframe = st.empty()
+            alert_container = st.container()
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                detections = detect_number_plate(frame)
+                result_frame = draw_detections(frame, detections)
+                for _, _, _, _, plate_text, is_stolen in detections:
+                    if is_stolen:
+                        with alert_container:
+                            st.markdown(f"<div class='alert-box'>🚨 ALERT: {plate_text} - {stolen_plates[plate_text]}</div>", unsafe_allow_html=True)
+                stframe.image(result_frame, channels="BGR")
+            cap.release()
+        st.markdown('</div>', unsafe_allow_html=True)
 
 # Directory of Images from ZIP
 elif input_type == "Directory (ZIP)":
-    uploaded_zip = st.file_uploader("Upload a ZIP file of images", type=["zip"])
-    if uploaded_zip is not None:
-        with tempfile.TemporaryDirectory() as extract_dir:
-            with zipfile.ZipFile(uploaded_zip, "r") as zip_ref:
-                zip_ref.extractall(extract_dir)
+    with st.container():
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        uploaded_zip = st.file_uploader("Upload a ZIP file of images", type=["zip"])
+        if uploaded_zip is not None:
+            is_valid, message = validate_file(uploaded_zip, "zip")
+            if not is_valid:
+                st.error(message)
+            else:
+                with st.spinner("Extracting and processing ZIP file..."):
+                    with tempfile.TemporaryDirectory() as extract_dir:
+                        with zipfile.ZipFile(uploaded_zip, "r") as zip_ref:
+                            zip_ref.extractall(extract_dir)
 
-            image_files = []
-            for root, _, files in os.walk(extract_dir):
-                for file in files:
-                    if file.lower().endswith(('.png', '.jpg', '.jpeg')):
-                        image_files.append(os.path.join(root, file))
+                        image_files = []
+                        for root, _, files in os.walk(extract_dir):
+                            for file in files:
+                                if file.lower().endswith(('.png', '.jpg', '.jpeg')):
+                                    image_files.append(os.path.join(root, file))
 
-            st.success(f"✅ {len(image_files)} image(s) found in the ZIP (including subdirectories)")
+                        st.success(f"✅ {len(image_files)} image(s) found in the ZIP (including subdirectories)")
 
-            for img_path in image_files:
-                frame = cv2.imread(img_path)
-                if frame is None:
-                    continue
-                detections = detect_number_plate(frame)
-                result_frame = draw_detections(frame, detections)
+                        alerts_found = False
+                        for img_path in image_files:
+                            frame = cv2.imread(img_path)
+                            if frame is None:
+                                continue
+                            detections = detect_number_plate(frame)
+                            result_frame = draw_detections(frame, detections)
 
-                for _, _, _, _, plate_text, is_stolen in detections:
-                    if is_stolen:
-                        st.error(f"🚨 ALERT: {plate_text} - {stolen_plates[plate_text]}")
+                            for _, _, _, _, plate_text, is_stolen in detections:
+                                if is_stolen:
+                                    alerts_found = True
+                                    st.markdown(f"<div class='alert-box'>🚨 ALERT in {os.path.basename(img_path)}: {plate_text} - {stolen_plates[plate_text]}</div>", unsafe_allow_html=True)
 
-                st.image(result_frame, channels="BGR", caption=os.path.basename(img_path))
+                            st.image(result_frame, channels="BGR", caption=os.path.basename(img_path))
+                        
+                        if not alerts_found:
+                            st.success("✓ No alerts found in any of the images")
+        st.markdown('</div>', unsafe_allow_html=True)
 
-# Beautiful custom CSS
+# Add footer
 st.markdown("""
-<style>
-    .main {background-color: #f4f9f4;}
-    .title h1 {
-        font-size: 2.7em;
-        background: linear-gradient(90deg, #00c6ff, #0072ff);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        animation: fadeIn 1s ease-in-out;
-        text-align: center;
-        margin-bottom: 10px;
-    }
-    .alert-box {
-        padding: 12px;
-        background-color: #ffe6e6;
-        border-left: 6px solid #f44336;
-        margin-bottom: 12px;
-        border-radius: 6px;
-        font-weight: bold;
-        color: #d8000c;
-    }
-    .plate-badge {
-        display: inline-block;
-        padding: 5px 10px;
-        font-size: 0.9em;
-        font-weight: bold;
-        border-radius: 12px;
-        background-color: #1ed760;
-        color: white;
-        margin-top: 5px;
-    }
-    .plate-badge.stolen {
-        background-color: #ff4d4d;
-        animation: blink 1s linear infinite;
-    }
-    @keyframes blink {
-        50% { opacity: 0.6; }
-    }
-    .image-card {
-        padding: 15px;
-        border: 1px solid #ccc;
-        border-radius: 10px;
-        margin-bottom: 20px;
-        box-shadow: 2px 2px 12px rgba(0,0,0,0.05);
-        background-color: #ffffff;
-    }
-</style>
+<div style="text-align: center; margin-top: 30px; padding: 10px; color: #888;">
+    <p>Developed with ❤ by Police Tech Team • Contact support: police@example.com</p>
+    <p style="font-size: 0.8em;">© 2025 Police Department. All rights reserved.</p>
+</div>
 """, unsafe_allow_html=True)
-st.markdown("<div class='image-card'>", unsafe_allow_html=True)
-st.image(result_frame, channels="BGR", caption=os.path.basename(img_path))
-st.markdown("</div>", unsafe_allow_html=True)
