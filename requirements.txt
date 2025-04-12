@@ -6,6 +6,5 @@ streamlit-lottie==0.0.5
 requests==2.28.2
 Pillow==9.3.0
 python-dotenv==1.0.0
-hmac==3.0.0
 easyocr==1.5.0  # Updated version of easyocr
 pip>=25.0.1
