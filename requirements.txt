@@ -6,3 +6,4 @@ easyocr
 numpy
 requests
 Pillow
+streamlit-lottie
