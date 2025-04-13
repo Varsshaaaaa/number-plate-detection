@@ -2,7 +2,7 @@
 # 📄 Deployment Documentation for Smart Number Plate Detection System
 
 **Project Name:** Smart Number Plate Detection System  
-**Deployed on:** [Streamlit Cloud](https://share.streamlit.io)
+**Deployed on:** [Streamlit Cloud](https://number-plate-detection-p5b9tknrozqlr9dum4uvcz.streamlit.app/#d07807da)
 
 ---
 
@@ -51,21 +51,6 @@ smart-number-plate-detection/
 ```
 
 ---
-
-## 📌 Accessing the Deployed App
-
-Once deployed, you’ll receive a shareable link like:
-
-`https://<your-streamlit-username>.streamlit.app`
-
-Example:
-
-```
-https://smart-plate-detection.streamlit.app
-```
-
----
-
 ## 📌 Notes
 
 - **Login credentials** are hardcoded for demo purposes. Replace or secure them via environment variables or a secure authentication service for production use.
