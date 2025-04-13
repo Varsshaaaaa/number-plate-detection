@@ -41,8 +41,8 @@ smart-number-plate-detection/
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/smart-number-plate-detection.git
-   cd smart-number-plate-detection
+   git clone https://github.com/yourusername/number-plate-detection.git
+   cd number-plate-detection
    ```
 
 2. Install dependencies:
@@ -59,7 +59,7 @@ smart-number-plate-detection/
 
 ## 🌐 Deployed App
 
-[Access Live Application](https://your-streamlit-username.streamlit.app)
+[Access Live Application](https://number-plate-detection-p5b9tknrozqlr9dum4uvcz.streamlit.app/#d07807da)
 
 ---
 
@@ -80,14 +80,4 @@ smart-number-plate-detection/
 - Ultralytics (YOLOv8)
 - hashlib
 
----
 
-## 📸 Screenshots
-
-*(Add your Streamlit app screenshots here)*
-
----
-
-## 📄 License
-
-MIT License
