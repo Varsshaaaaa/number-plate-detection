@@ -105,25 +105,34 @@ def browser_webcam_component():
       <body>
         <h3>Webcam Feed</h3>
         <video id="webcam" autoplay></video>
+        <button id="capture">Capture Frame</button>
         <script>
           const webcam = document.getElementById('webcam');
-          if (navigator.mediaDevices.getUserMedia) {
-            navigator.mediaDevices.getUserMedia({ video: true })
-              .then(stream => {
-                webcam.srcObject = stream;
-              })
-              .catch(error => {
-                console.error('Error accessing webcam:', error);
-              });
-          } else {
-            console.error('WebRTC not supported by this browser.');
-          }
+          const captureBtn = document.getElementById('capture');
+          const canvas = document.createElement('canvas');
+          canvas.style.display = 'none';
+          document.body.appendChild(canvas);
+
+          // Access the webcam
+          navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => { webcam.srcObject = stream; })
+            .catch(error => { console.error("Error accessing webcam:", error); });
+
+          // Capture frame and encode as Base64
+          captureBtn.addEventListener('click', () => {
+            canvas.width = webcam.videoWidth;
+            canvas.height = webcam.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(webcam, 0, 0, canvas.width, canvas.height);
+            const frameData = canvas.toDataURL('image/jpeg').split(',')[1];
+            alert("Frame captured! Paste the Base64 data into the Streamlit app to process.");
+          });
         </script>
       </body>
     </html>
     """
-    components.html(webcam_html, height=300)
-    st.warning("Webcam functionality is limited to viewing only. To process frames, upload video files or images.")
+    components.html(webcam_html, height=400)
+    st.warning("Webcam functionality is limited to viewing and capturing. Use video or image upload for automated processing.")
 
 # Main detection UI logic
 def detection_system():
@@ -195,11 +204,4 @@ def detection_system():
                     result_frame = draw_detections(frame, detections)
                     for _, _, _, _, plate_text, is_stolen in detections:
                         if is_stolen:
-                            st.error(f"🚨 ALERT: {plate_text} - {encrypted_stolen_plates[hashlib.sha256(plate_text.encode()).hexdigest()]}")
-                    st.image(result_frame, channels="BGR", caption=os.path.basename(img_path))
-
-# Entry point
-if st.session_state["authenticated"]:
-    detection_system()
-else:
-    login()
+                            st.error(f"🚨 ALERT: {plate_text} - {encrypted_stolen_plates
