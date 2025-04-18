@@ -52,7 +52,7 @@ def login():
         if username in USER_CREDENTIALS and USER_CREDENTIALS[username] == password:
             st.session_state["authenticated"] = True
             st.success(f"Welcome, {username}!")
-            st.rerun()
+            st.experimental_rerun()
         else:
             st.error("Invalid username or password. Please try again.")
 
@@ -146,7 +146,11 @@ def detection_system():
 
         class PlateDetectionTransformer(VideoTransformerBase):
             def __init__(self):
-                # Use already initialized model and reader from session state
+                # Safeguard against uninitialized keys
+                if "model" not in st.session_state or st.session_state["model"] is None:
+                    st.session_state["model"] = YOLO("yolov8n.pt")
+                if "reader" not in st.session_state or st.session_state["reader"] is None:
+                    st.session_state["reader"] = easyocr.Reader(['en'])
                 self.model = st.session_state["model"]
                 self.reader = st.session_state["reader"]
 
