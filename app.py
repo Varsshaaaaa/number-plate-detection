@@ -204,4 +204,11 @@ def detection_system():
                     result_frame = draw_detections(frame, detections)
                     for _, _, _, _, plate_text, is_stolen in detections:
                         if is_stolen:
-                            st.error(f"🚨 ALERT: {plate_text} - {encrypted_stolen_plates
+                            st.error(f"🚨 ALERT: {plate_text} - {encrypted_stolen_plates[hashlib.sha256(plate_text.encode()).hexdigest()]}")
+                    st.image(result_frame, channels="BGR", caption=os.path.basename(img_path))
+
+# Entry point
+if st.session_state["authenticated"]:
+    detection_system()
+else:
+    login()
