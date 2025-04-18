@@ -7,3 +7,4 @@ numpy
 requests
 Pillow
 streamlit-lottie
+streamlit-webrtc
