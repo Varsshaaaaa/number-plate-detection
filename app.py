@@ -88,70 +88,74 @@ def decode_base64_to_image(base64_str):
     return img
 
 # 📌 Corrected — Enlarged browser webcam component
-def browser_webcam_component():
-    st.title("Webcam Feed")
+def browser_webcam_component(conf_threshold):
+    st.title("📷 Browser Webcam Detection")
+
+    st.markdown("""
+    <h5>Click "Capture Frame" and see detection results below:</h5>
+    """, unsafe_allow_html=True)
+
+    # Hidden text_input to receive Base64 frame from JS
+    captured_frame = st.text_input("Captured Frame (Base64)", key="captured_frame")
+
     webcam_html = """
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <style>
-          body {
-            text-align: center;
-            margin: 0;
-            padding: 0;
-          }
-          video {
-            width: 90vw;
-            max-width: 1280px;
-            height: auto;
-            border: 3px solid black;
-            border-radius: 10px;
-          }
-          button {
-            margin-top: 20px;
-            padding: 14px 28px;
-            font-size: 18px;
-            border: none;
-            border-radius: 5px;
-            background-color: #3498db;
-            color: white;
-            cursor: pointer;
-          }
-          button:hover {
-            background-color: #2980b9;
-          }
-        </style>
-      </head>
-      <body>
-        <h3>Webcam Feed</h3>
-        <video id="webcam" autoplay playsinline></video>
-        <br/>
-        <button id="capture">Capture Frame</button>
-        <script>
-          const webcam = document.getElementById('webcam');
-          const captureBtn = document.getElementById('capture');
-          const canvas = document.createElement('canvas');
-          canvas.style.display = 'none';
-          document.body.appendChild(canvas);
+    <script>
+      const video = document.createElement('video');
+      video.style.width = '90%%';
+      video.style.maxWidth = '800px';
+      video.style.border = '3px solid black';
+      video.style.borderRadius = '10px';
+      video.autoplay = true;
+      video.playsInline = true;
+      document.body.appendChild(video);
 
-          navigator.mediaDevices.getUserMedia({ video: true })
-            .then(stream => { webcam.srcObject = stream; })
-            .catch(error => { console.error("Error accessing webcam:", error); });
+      const button = document.createElement('button');
+      button.innerText = 'Capture Frame';
+      button.style.marginTop = '20px';
+      button.style.padding = '14px 28px';
+      button.style.fontSize = '18px';
+      button.style.border = 'none';
+      button.style.borderRadius = '5px';
+      button.style.backgroundColor = '#3498db';
+      button.style.color = 'white';
+      button.style.cursor = 'pointer';
+      button.onmouseover = () => button.style.backgroundColor = '#2980b9';
+      button.onmouseout = () => button.style.backgroundColor = '#3498db';
+      document.body.appendChild(button);
 
-          captureBtn.addEventListener('click', () => {
-            canvas.width = webcam.videoWidth;
-            canvas.height = webcam.videoHeight;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(webcam, 0, 0, canvas.width, canvas.height);
-            const frameData = canvas.toDataURL('image/jpeg').split(',')[1];
-            window.parent.postMessage({ type: 'webcam-frame', data: frameData }, '*');
-          });
-        </script>
-      </body>
-    </html>
+      navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => { video.srcObject = stream; })
+        .catch(error => { console.error("Error accessing webcam:", error); });
+
+      button.addEventListener('click', () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const frameData = canvas.toDataURL('image/jpeg').split(',')[1];
+        const input = window.parent.document.querySelector("input[data-baseweb='input']");
+        if(input){
+            input.value = frameData;
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+      });
+    </script>
     """
     components.html(webcam_html, height=800)
-    st.warning("Webcam functionality is limited to viewing and capturing. Use video or image upload for automated processing.")
+
+    if captured_frame:
+        st.success("✅ Frame captured successfully!")
+        img = decode_base64_to_image(captured_frame)
+        detections = detect_number_plate(img, conf_threshold)
+        result_frame = draw_detections(img, detections)
+
+        for _, _, _, _, plate_text, is_stolen in detections:
+            if is_stolen:
+                st.error(f"🚨 ALERT: {plate_text} - {encrypted_stolen_plates[hashlib.sha256(plate_text.encode()).hexdigest()]}")
+
+        st.image(result_frame, channels="BGR", caption="Detected Frame")
+
 
 def detection_system():
     st.title("🚘 Smart Number Plate Detection System")
@@ -205,7 +209,7 @@ def detection_system():
             progress_bar.empty()
 
     elif input_type == "Browser Webcam":
-        browser_webcam_component()
+        browser_webcam_component(conf_threshold)
 
     elif input_type == "Directory (ZIP)":
         uploaded_zip = st.file_uploader("Upload a ZIP file of images", type=["zip"])
