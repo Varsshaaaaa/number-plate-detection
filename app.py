@@ -89,29 +89,73 @@ def draw_detections(frame, detections):
         cv2.putText(frame, plate_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
     return frame
 
-# Start webcam capture and display stream
+# Capture webcam feed using JavaScript and send to Streamlit
 def capture_webcam():
     st.title("Webcam Access with OpenCV")
 
-    # Start webcam capture when the button is pressed
-    if st.button("Start Webcam"):
-        cap = cv2.VideoCapture(0)  # 0 for the default webcam
-        if not cap.isOpened():
-            st.error("Could not access the webcam. Please check your camera and try again.")
-            return
+    # HTML + JavaScript code for webcam capture
+    webcam_html = """
+    <html>
+    <head>
+        <style>
+            video {
+                width: 100%;
+                height: auto;
+            }
+        </style>
+    </head>
+    <body>
+        <h3>Webcam Stream</h3>
+        <video id="webcam" autoplay></video>
+        <br>
+        <button id="capture">Capture Frame</button>
 
-        stframe = st.empty()  # This will hold the webcam stream in Streamlit
+        <script>
+            const webcam = document.getElementById('webcam');
+            const captureButton = document.getElementById('capture');
+            const canvas = document.createElement('canvas');
+            canvas.style.display = 'none';
+            document.body.appendChild(canvas);
 
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                st.warning("Failed to capture frame. Please check your webcam.")
-                break
+            // Access webcam
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then((stream) => {
+                    webcam.srcObject = stream;
+                })
+                .catch((error) => {
+                    console.error("Error accessing webcam: ", error);
+                });
 
-            # Display the frame using Streamlit
-            stframe.image(frame, channels="BGR", use_column_width=True)
+            // Capture frame and send data to Streamlit
+            captureButton.addEventListener('click', () => {
+                canvas.width = webcam.videoWidth;
+                canvas.height = webcam.videoHeight;
+                const context = canvas.getContext('2d');
+                context.drawImage(webcam, 0, 0, canvas.width, canvas.height);
+                const imageData = canvas.toDataURL('image/jpeg').split(',')[1]; // Base64 image data
+                window.parent.postMessage({ type: 'image', data: imageData }, '*');
+            });
+        </script>
+    </body>
+    </html>
+    """
 
-        cap.release()
+    components.html(webcam_html, height=500)
+
+    # Wait for the image data sent by the JavaScript frontend
+    image_data = st.experimental_get_query_params().get('image')
+    if image_data:
+        # Decode the Base64 image data
+        img_data = base64.b64decode(image_data[0])
+        img = Image.open(io.BytesIO(img_data))
+        frame = np.array(img)
+
+        # Process the frame to detect number plates
+        detections = detect_number_plate(frame, 0.5)  # Conf threshold is set to 0.5
+        result_frame = draw_detections(frame, detections)
+
+        # Display the processed image
+        st.image(result_frame, channels="BGR", caption="Processed Image with Number Plate Detection")
 
 # Main detection UI logic
 def detection_system():
@@ -176,20 +220,18 @@ def detection_system():
             with tempfile.TemporaryDirectory() as extract_dir:
                 with zipfile.ZipFile(uploaded_zip, "r") as zip_ref:
                     zip_ref.extractall(extract_dir)
-                image_files = [os.path.join(root, file) for root, _, files in os.walk(extract_dir)
-                               for file in files if file.lower().endswith(('png', 'jpg', 'jpeg'))]
-                st.success(f"✅ Found {len(image_files)} image(s).")
-                for img_path in image_files:
-                    frame = cv2.imread(img_path)
-                    detections = detect_number_plate(frame, conf_threshold)
-                    result_frame = draw_detections(frame, detections)
+                image_files = [os.path.join(root, file) for root, _, files in os.walk(extract_dir) for file in files if file.lower().endswith(('png', 'jpg', 'jpeg'))]
+                for img_file in image_files:
+                    img = cv2.imread(img_file)
+                    detections = detect_number_plate(img, conf_threshold)
+                    result_frame = draw_detections(img, detections)
                     for _, _, _, _, plate_text, is_stolen in detections:
                         if is_stolen:
-                            st.error(f"🚨 ALERT: {plate_text} - {encrypted_stolen_plates[hashlib.sha256(plate_text.encode()).hexdigest()]}")
+                            st.warning(f"🚨 ALERT: {plate_text} - {encrypted_stolen_plates[hashlib.sha256(plate_text.encode()).hexdigest()]}")
 
-                    st.image(result_frame, channels="BGR", caption=os.path.basename(img_path))
+                    st.image(result_frame, channels="BGR", caption=os.path.basename(img_file))
 
-# Entry point
+# Run authentication and system
 if st.session_state["authenticated"]:
     detection_system()
 else:
