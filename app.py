@@ -14,13 +14,9 @@ import av
 # Set up the Streamlit page
 st.set_page_config(page_title="Smart Number Plate Detection with Login", layout="centered", initial_sidebar_state="expanded")
 
-# Initialize session state
+# Initialize session state variables
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
-if "model" not in st.session_state:
-    st.session_state["model"] = None
-if "reader" not in st.session_state:
-    st.session_state["reader"] = None
 
 # Predefined user credentials
 USER_CREDENTIALS = {
@@ -28,7 +24,7 @@ USER_CREDENTIALS = {
     "user1": "password123",
 }
 
-# Encrypt license plates
+# Encrypt license plates (just an example)
 def encrypt_data(data):
     hashed_data = {}
     for plate, details in data.items():
@@ -36,7 +32,7 @@ def encrypt_data(data):
         hashed_data[plate_hash] = details
     return hashed_data
 
-# Stolen vehicle plate data
+# Stolen vehicle plate data (for testing)
 encrypted_stolen_plates = encrypt_data({
     "TN01AB1234": "Reported stolen - Chennai",
     "KA09XY9876": "Police Alert - Bengaluru",
@@ -52,7 +48,7 @@ def login():
         if username in USER_CREDENTIALS and USER_CREDENTIALS[username] == password:
             st.session_state["authenticated"] = True
             st.success(f"Welcome, {username}!")
-            st.experimental_rerun()
+            st.rerun()
         else:
             st.error("Invalid username or password. Please try again.")
 
@@ -64,9 +60,7 @@ def is_malicious_image(file):
     return header_type not in ['jpeg', 'png']
 
 # Detect number plates in frames
-def detect_number_plate(frame, conf_threshold):
-    model = st.session_state["model"]
-    reader = st.session_state["reader"]
+def detect_number_plate(frame, model, reader, conf_threshold):
     results = model(frame)[0]
     detections = []
     for box in results.boxes:
@@ -92,32 +86,64 @@ def draw_detections(frame, detections):
 def detection_system():
     st.title("🚘 Smart Number Plate Detection System")
 
-    # Ensure model and reader are initialized
-    if st.session_state["model"] is None:
-        st.session_state["model"] = YOLO("yolov8n.pt")  # Default YOLO model
-    if st.session_state["reader"] is None:
-        st.session_state["reader"] = easyocr.Reader(['en'])
+    # Load the model and reader if not already loaded
+    model = YOLO("yolov8n.pt")  # Load YOLO model
+    reader = easyocr.Reader(['en'])  # Load OCR reader
 
     st.sidebar.header("Choose Input Mode")
     input_type = st.sidebar.radio("Select input type", ["Image", "Video", "Webcam", "Directory (ZIP)"])
     conf_threshold = st.sidebar.slider("Detection Confidence", 0.25, 1.0, 0.5, 0.05)
 
-    if input_type == "Webcam":
+    if input_type == "Image":
+        uploaded_image = st.file_uploader("Upload an Image", type=["jpg", "jpeg", "png"])
+        if uploaded_image:
+            if is_malicious_image(uploaded_image):
+                st.error("❌ Uploaded file is not a valid image or may be malicious.")
+            else:
+                file_bytes = np.asarray(bytearray(uploaded_image.read()), dtype=np.uint8)
+                frame = cv2.imdecode(file_bytes, 1)
+                detections = detect_number_plate(frame, model, reader, conf_threshold)
+                result_frame = draw_detections(frame, detections)
+                for _, _, _, _, plate_text, is_stolen in detections:
+                    if is_stolen:
+                        st.error(f"🚨 ALERT: {plate_text} - {encrypted_stolen_plates[hashlib.sha256(plate_text.encode()).hexdigest()]}")
+                st.image(result_frame, channels="BGR", caption="Processed Image")
+
+    elif input_type == "Video":
+        uploaded_video = st.file_uploader("Upload a Video", type=["mp4", "mov", "avi"])
+        if uploaded_video:
+            tfile = tempfile.NamedTemporaryFile(delete=False)
+            tfile.write(uploaded_video.read())
+            cap = cv2.VideoCapture(tfile.name)
+            stframe = st.empty()
+            progress_bar = st.progress(0)
+            frame_count = 0
+            while cap.isOpened():
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                detections = detect_number_plate(frame, model, reader, conf_threshold)
+                result_frame = draw_detections(frame, detections)
+                for _, _, _, _, plate_text, is_stolen in detections:
+                    if is_stolen:
+                        st.warning(f"🚨 ALERT: {plate_text} - {encrypted_stolen_plates[hashlib.sha256(plate_text.encode()).hexdigest()]}")
+                stframe.image(result_frame, channels="BGR")
+                frame_count += 1
+                progress_bar.progress((frame_count % 100) / 100)
+            cap.release()
+            progress_bar.empty()
+
+    elif input_type == "Webcam":
         st.subheader("📷 Real-time Detection via Webcam")
 
         class PlateDetectionTransformer(VideoTransformerBase):
             def __init__(self):
-                # Ensure keys are initialized to prevent KeyError
-                if "model" not in st.session_state or st.session_state["model"] is None:
-                    st.session_state["model"] = YOLO("yolov8n.pt")
-                if "reader" not in st.session_state or st.session_state["reader"] is None:
-                    st.session_state["reader"] = easyocr.Reader(['en'])
-                self.model = st.session_state["model"]
-                self.reader = st.session_state["reader"]
+                self.model = model
+                self.reader = reader
 
             def transform(self, frame: av.VideoFrame) -> av.VideoFrame:
                 img = frame.to_ndarray(format="bgr24")
-                detections = detect_number_plate(img, conf_threshold)
+                detections = detect_number_plate(img, self.model, self.reader, conf_threshold)
                 result_img = draw_detections(img, detections)
                 return av.VideoFrame.from_ndarray(result_img, format="bgr24")
 
@@ -128,7 +154,23 @@ def detection_system():
             async_transform=True,
         )
 
-    # Add remaining logic for other input modes (Image, Video, ZIP)
+    elif input_type == "Directory (ZIP)":
+        uploaded_zip = st.file_uploader("Upload a ZIP file of images", type=["zip"])
+        if uploaded_zip:
+            with tempfile.TemporaryDirectory() as extract_dir:
+                with zipfile.ZipFile(uploaded_zip, "r") as zip_ref:
+                    zip_ref.extractall(extract_dir)
+                image_files = [os.path.join(root, file) for root, _, files in os.walk(extract_dir)
+                               for file in files if file.lower().endswith(('png', 'jpg', 'jpeg'))]
+                st.success(f"✅ Found {len(image_files)} image(s).")
+                for img_path in image_files:
+                    frame = cv2.imread(img_path)
+                    detections = detect_number_plate(frame, model, reader, conf_threshold)
+                    result_frame = draw_detections(frame, detections)
+                    for _, _, _, _, plate_text, is_stolen in detections:
+                        if is_stolen:
+                            st.error(f"🚨 ALERT: {plate_text} - {encrypted_stolen_plates[hashlib.sha256(plate_text.encode()).hexdigest()]}")
+                    st.image(result_frame, channels="BGR", caption=os.path.basename(img_path))
 
 # Entry point
 if st.session_state["authenticated"]:
