@@ -146,6 +146,11 @@ def detection_system():
 
         class PlateDetectionTransformer(VideoTransformerBase):
             def __init__(self):
+                # Initialize the model and reader inside the class if they aren't already set
+                if st.session_state["model"] is None:
+                    st.session_state["model"] = YOLO("yolov8n.pt")
+                if st.session_state["reader"] is None:
+                    st.session_state["reader"] = easyocr.Reader(['en'])
                 self.model = st.session_state["model"]
                 self.reader = st.session_state["reader"]
 
