@@ -11,10 +11,10 @@ import imghdr
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 import av
 
-# ---------------------- Streamlit Setup ----------------------
-st.set_page_config(page_title="Smart Number Plate Detection with Login", layout="centered")
+# Set up the Streamlit page
+st.set_page_config(page_title="Smart Number Plate Detection with Login", layout="centered", initial_sidebar_state="expanded")
 
-# ---------------------- Session Initialization ----------------------
+# Initialize session state
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 if "model" not in st.session_state:
@@ -22,13 +22,13 @@ if "model" not in st.session_state:
 if "reader" not in st.session_state:
     st.session_state["reader"] = None
 
-# ---------------------- User Credentials ----------------------
+# Predefined user credentials
 USER_CREDENTIALS = {
     "admin": "admin123",
     "user1": "password123",
 }
 
-# ---------------------- Encryption of Plates ----------------------
+# Encrypt license plates
 def encrypt_data(data):
     hashed_data = {}
     for plate, details in data.items():
@@ -36,13 +36,14 @@ def encrypt_data(data):
         hashed_data[plate_hash] = details
     return hashed_data
 
+# Stolen vehicle plate data
 encrypted_stolen_plates = encrypt_data({
     "TN01AB1234": "Reported stolen - Chennai",
     "KA09XY9876": "Police Alert - Bengaluru",
     "MH12ZZ0001": "Missing vehicle - Pune"
 })
 
-# ---------------------- Login Function ----------------------
+# Basic login UI
 def login():
     st.title("🔒 Login to Access Detection System")
     username = st.text_input("Username")
@@ -55,14 +56,14 @@ def login():
         else:
             st.error("Invalid username or password. Please try again.")
 
-# ---------------------- Utility: Image Type Check ----------------------
+# Check if uploaded file is a valid image
 def is_malicious_image(file):
     file.seek(0)
     header_type = imghdr.what(None, h=file.read(512))
     file.seek(0)
     return header_type not in ['jpeg', 'png']
 
-# ---------------------- Detection Logic ----------------------
+# Detect number plates in frames
 def detect_number_plate(frame, conf_threshold):
     model = st.session_state["model"]
     reader = st.session_state["reader"]
@@ -79,7 +80,7 @@ def detect_number_plate(frame, conf_threshold):
             detections.append((x1, y1, x2, y2, plate_text, is_stolen))
     return detections
 
-# ---------------------- Draw Detection Results ----------------------
+# Draw bounding boxes with plate info
 def draw_detections(frame, detections):
     for x1, y1, x2, y2, plate_text, is_stolen in detections:
         color = (0, 0, 255) if is_stolen else (0, 255, 0)
@@ -87,12 +88,13 @@ def draw_detections(frame, detections):
         cv2.putText(frame, plate_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
     return frame
 
-# ---------------------- Main Detection Interface ----------------------
+# Main detection UI logic
 def detection_system():
     st.title("🚘 Smart Number Plate Detection System")
 
+    # Load the model and reader if not already in session state
     if st.session_state["model"] is None:
-        st.session_state["model"] = YOLO("yolov8n.pt")
+        st.session_state["model"] = YOLO("yolov8n.pt")  # You can change this to a custom model
     if st.session_state["reader"] is None:
         st.session_state["reader"] = easyocr.Reader(['en'])
 
@@ -100,7 +102,6 @@ def detection_system():
     input_type = st.sidebar.radio("Select input type", ["Image", "Video", "Webcam", "Directory (ZIP)"])
     conf_threshold = st.sidebar.slider("Detection Confidence", 0.25, 1.0, 0.5, 0.05)
 
-    # ---------------------- Image Upload ----------------------
     if input_type == "Image":
         uploaded_image = st.file_uploader("Upload an Image", type=["jpg", "jpeg", "png"])
         if uploaded_image:
@@ -116,7 +117,6 @@ def detection_system():
                         st.error(f"🚨 ALERT: {plate_text} - {encrypted_stolen_plates[hashlib.sha256(plate_text.encode()).hexdigest()]}")
                 st.image(result_frame, channels="BGR", caption="Processed Image")
 
-    # ---------------------- Video Upload ----------------------
     elif input_type == "Video":
         uploaded_video = st.file_uploader("Upload a Video", type=["mp4", "mov", "avi"])
         if uploaded_video:
@@ -141,7 +141,6 @@ def detection_system():
             cap.release()
             progress_bar.empty()
 
-    # ---------------------- Webcam Stream ----------------------
     elif input_type == "Webcam":
         st.subheader("📷 Real-time Detection via Webcam")
 
@@ -163,7 +162,6 @@ def detection_system():
             async_transform=True,
         )
 
-    # ---------------------- ZIP Folder Input ----------------------
     elif input_type == "Directory (ZIP)":
         uploaded_zip = st.file_uploader("Upload a ZIP file of images", type=["zip"])
         if uploaded_zip:
@@ -182,7 +180,7 @@ def detection_system():
                             st.error(f"🚨 ALERT: {plate_text} - {encrypted_stolen_plates[hashlib.sha256(plate_text.encode()).hexdigest()]}")
                     st.image(result_frame, channels="BGR", caption=os.path.basename(img_path))
 
-# ---------------------- Entry Point ----------------------
+# Entry point
 if st.session_state["authenticated"]:
     detection_system()
 else:
