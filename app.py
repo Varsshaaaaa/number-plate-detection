@@ -55,6 +55,7 @@ def capture_webcam():
                 color: white;
                 border: none;
                 cursor: pointer;
+                margin-top: 20px;
             }
         </style>
     </head>
