@@ -1,23 +1,21 @@
 import streamlit as st
-import streamlit.components.v1 as components
-import numpy as np
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
+import av
 import cv2
-import base64
 import hashlib
-from io import BytesIO
-from PIL import Image
+import numpy as np
 
-# Dummy stolen plate data (hash: location)
+# Dummy stolen plate data
 encrypted_stolen_plates = {
     hashlib.sha256("TN01AB1234".encode()).hexdigest(): "Coimbatore",
     hashlib.sha256("KL07CD5678".encode()).hexdigest(): "Chennai"
 }
 
-# Dummy detection function — replace with your YOLO detection logic
-def detect_number_plate(frame, conf_threshold=0.5):
-    # This is just a placeholder for demo purposes
+# Number Plate Detection Simulation
+def detect_number_plate(frame):
     h, w, _ = frame.shape
-    return [(int(w/4), int(h/4), int(w/2), int(h/2), "TN01AB1234", True)]  # (x1, y1, x2, y2, plate_text, is_stolen)
+    # Dummy one detection
+    return [(int(w/4), int(h/4), int(w/2), int(h/2), "TN01AB1234", True)]
 
 # Draw detections
 def draw_detections(frame, detections):
@@ -27,85 +25,36 @@ def draw_detections(frame, detections):
         cv2.putText(frame, plate_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
     return frame
 
-# Decode base64 image to OpenCV
-def decode_base64_to_image(base64_string):
-    img_data = base64.b64decode(base64_string)
-    np_arr = np.frombuffer(img_data, np.uint8)
-    image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-    return image
+# Custom Video Transformer
+class VideoTransformer(VideoTransformerBase):
+    def __init__(self):
+        self.frame_to_display = None
 
-# Webcam component
-def browser_webcam_component():
-    st.title("📷 Live Webcam Feed")
-    webcam_html = """
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <style>
-          video {
-            width: 640px;
-            height: 480px;
-            border: 2px solid black;
-          }
-          button {
-            margin-top: 10px;
-            padding: 10px 20px;
-            font-size: 16px;
-          }
-        </style>
-      </head>
-      <body>
-        <h3>Webcam Feed</h3>
-        <video id="webcam" autoplay></video>
-        <br/>
-        <button id="capture">Capture Frame</button>
-        <script>
-          const webcam = document.getElementById('webcam');
-          const captureBtn = document.getElementById('capture');
-          const canvas = document.createElement('canvas');
-          canvas.style.display = 'none';
-          document.body.appendChild(canvas);
+    def transform(self, frame):
+        img = frame.to_ndarray(format="bgr24")
 
-          navigator.mediaDevices.getUserMedia({ video: true })
-            .then(stream => { webcam.srcObject = stream; })
-            .catch(error => { console.error("Error accessing webcam:", error); });
-
-          captureBtn.addEventListener('click', () => {
-            canvas.width = webcam.videoWidth;
-            canvas.height = webcam.videoHeight;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(webcam, 0, 0, canvas.width, canvas.height);
-            const frameData = canvas.toDataURL('image/jpeg');
-            window.parent.location.hash = frameData;
-          });
-        </script>
-      </body>
-    </html>
-    """
-    components.html(webcam_html, height=600)
-
-# Run app
-def main():
-    st.set_page_config(page_title="Smart Number Plate Detection", layout="wide")
-
-    browser_webcam_component()
-
-    st.subheader("📸 Captured Frame Detection")
-
-    # Get base64 from URL hash
-    captured_data = st.experimental_get_query_params().get('hash', [None])[0]
-
-    if captured_data:
-        base64_data = captured_data.replace("data:image/jpeg;base64,", "")
-        frame = decode_base64_to_image(base64_data)
-        detections = detect_number_plate(frame, conf_threshold=0.5)
-        result_frame = draw_detections(frame, detections)
+        detections = detect_number_plate(img)
+        result_img = draw_detections(img, detections)
 
         for _, _, _, _, plate_text, is_stolen in detections:
             if is_stolen:
-                st.error(f"🚨 ALERT: {plate_text} - {encrypted_stolen_plates[hashlib.sha256(plate_text.encode()).hexdigest()]}")
+                st.session_state['alert'] = f"🚨 ALERT: {plate_text} - {encrypted_stolen_plates[hashlib.sha256(plate_text.encode()).hexdigest()]}"
+            else:
+                st.session_state['alert'] = None
 
-        st.image(result_frame, channels="BGR", caption="Detected Frame from Webcam")
+        return result_img
+
+# App Main
+def main():
+    st.title("🚘 Smart Number Plate Detection via Webcam")
+
+    if 'alert' not in st.session_state:
+        st.session_state['alert'] = None
+
+    webrtc_streamer(key="example", video_transformer_factory=VideoTransformer)
+
+    if st.session_state['alert']:
+        st.error(st.session_state['alert'])
 
 if __name__ == "__main__":
     main()
