@@ -9,6 +9,8 @@ import os
 import zipfile
 import imghdr
 import streamlit.components.v1 as components
+import base64
+from io import BytesIO
 
 # Set up the Streamlit page
 st.set_page_config(page_title="Smart Number Plate Detection with Browser Webcam", layout="centered", initial_sidebar_state="expanded")
@@ -87,6 +89,13 @@ def draw_detections(frame, detections):
         cv2.putText(frame, plate_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
     return frame
 
+# Convert base64 string to image
+def decode_base64_to_image(base64_str):
+    img_data = base64.b64decode(base64_str)
+    img_array = np.frombuffer(img_data, dtype=np.uint8)
+    img = cv2.imdecode(img_array, 1)
+    return img
+
 # Browser-based webcam component (HTML)
 def browser_webcam_component():
     st.title("Webcam Feed")
@@ -125,7 +134,8 @@ def browser_webcam_component():
             const ctx = canvas.getContext('2d');
             ctx.drawImage(webcam, 0, 0, canvas.width, canvas.height);
             const frameData = canvas.toDataURL('image/jpeg').split(',')[1];
-            alert("Frame captured! Paste the Base64 data into the Streamlit app to process.");
+            // Send captured base64 string to Streamlit
+            window.parent.postMessage({ type: 'webcam-frame', data: frameData }, '*');
           });
         </script>
       </body>
@@ -160,6 +170,7 @@ def detection_system():
                 for _, _, _, _, plate_text, is_stolen in detections:
                     if is_stolen:
                         st.error(f"🚨 ALERT: {plate_text} - {encrypted_stolen_plates[hashlib.sha256(plate_text.encode()).hexdigest()]}")
+
                 st.image(result_frame, channels="BGR", caption="Processed Image")
 
     elif input_type == "Video":
@@ -180,6 +191,7 @@ def detection_system():
                 for _, _, _, _, plate_text, is_stolen in detections:
                     if is_stolen:
                         st.warning(f"🚨 ALERT: {plate_text} - {encrypted_stolen_plates[hashlib.sha256(plate_text.encode()).hexdigest()]}")
+
                 stframe.image(result_frame, channels="BGR")
                 frame_count += 1
                 progress_bar.progress((frame_count % 100) / 100)
@@ -205,6 +217,7 @@ def detection_system():
                     for _, _, _, _, plate_text, is_stolen in detections:
                         if is_stolen:
                             st.error(f"🚨 ALERT: {plate_text} - {encrypted_stolen_plates[hashlib.sha256(plate_text.encode()).hexdigest()]}")
+
                     st.image(result_frame, channels="BGR", caption=os.path.basename(img_path))
 
 # Entry point
