@@ -148,7 +148,7 @@ def browser_webcam_component():
     </html>
     """
     components.html(webcam_html, height=600)
-    st.warning("Webcam functionality is limited to viewing and capturing. Use video or image upload for automated processing.")
+    st.warning("Webcam functionality is limited to viewing and capturing. Use video or image upload for automated processing.")")
 
 
 # Main detection UI logic
