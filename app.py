@@ -9,7 +9,7 @@ import os
 import zipfile
 import imghdr
 
-# Streamlit page config
+# Set up the Streamlit page
 st.set_page_config(page_title="Smart Number Plate Detection with Login", layout="centered", initial_sidebar_state="expanded")
 
 # Initialize session state
@@ -20,13 +20,13 @@ if "model" not in st.session_state:
 if "reader" not in st.session_state:
     st.session_state["reader"] = None
 
-# User credentials
+# Predefined user credentials
 USER_CREDENTIALS = {
     "admin": "admin123",
     "user1": "password123",
 }
 
-# Encrypt stolen plates
+# Encrypt license plates
 def encrypt_data(data):
     hashed_data = {}
     for plate, details in data.items():
@@ -34,13 +34,14 @@ def encrypt_data(data):
         hashed_data[plate_hash] = details
     return hashed_data
 
+# Stolen vehicle plate data
 encrypted_stolen_plates = encrypt_data({
     "TN01AB1234": "Reported stolen - Chennai",
     "KA09XY9876": "Police Alert - Bengaluru",
     "MH12ZZ0001": "Missing vehicle - Pune"
 })
 
-# Login Function
+# Basic login UI
 def login():
     st.title("🔒 Login to Access Detection System")
     username = st.text_input("Username")
@@ -53,17 +54,14 @@ def login():
         else:
             st.error("Invalid username or password. Please try again.")
 
-# Malicious file check (basic)
+# Check if uploaded file is a valid image
 def is_malicious_image(file):
-    # Check MIME type and header using imghdr
     file.seek(0)
     header_type = imghdr.what(None, h=file.read(512))
     file.seek(0)
-    if header_type not in ['jpeg', 'png']:
-        return True
-    return False
+    return header_type not in ['jpeg', 'png']
 
-# Plate Detection
+# Detect number plates in frames
 def detect_number_plate(frame, conf_threshold):
     model = st.session_state["model"]
     reader = st.session_state["reader"]
@@ -80,20 +78,20 @@ def detect_number_plate(frame, conf_threshold):
             detections.append((x1, y1, x2, y2, plate_text, is_stolen))
     return detections
 
-# Draw boxes
+# Draw bounding boxes with plate info
 def draw_detections(frame, detections):
     for x1, y1, x2, y2, plate_text, is_stolen in detections:
         color = (0, 0, 255) if is_stolen else (0, 255, 0)
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-        cv2.putText(frame, plate_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
+        cv2.putText(frame, plate_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
     return frame
 
-# Detection Logic
+# Main detection UI logic
 def detection_system():
     st.title("🚘 Smart Number Plate Detection System")
 
     if st.session_state["model"] is None:
-        st.session_state["model"] = YOLO("yolov8n.pt")
+        st.session_state["model"] = YOLO("yolov8n.pt")  # You can change this to a custom model
     if st.session_state["reader"] is None:
         st.session_state["reader"] = easyocr.Reader(['en'])
 
@@ -136,7 +134,7 @@ def detection_system():
                         st.warning(f"🚨 ALERT: {plate_text} - {encrypted_stolen_plates[hashlib.sha256(plate_text.encode()).hexdigest()]}")
                 stframe.image(result_frame, channels="BGR")
                 frame_count += 1
-                progress_bar.progress(frame_count % 100 / 100)
+                progress_bar.progress((frame_count % 100) / 100)
             cap.release()
             progress_bar.empty()
 
@@ -163,7 +161,8 @@ def detection_system():
             with tempfile.TemporaryDirectory() as extract_dir:
                 with zipfile.ZipFile(uploaded_zip, "r") as zip_ref:
                     zip_ref.extractall(extract_dir)
-                image_files = [os.path.join(root, file) for root, _, files in os.walk(extract_dir) for file in files if file.lower().endswith(('png', 'jpg', 'jpeg'))]
+                image_files = [os.path.join(root, file) for root, _, files in os.walk(extract_dir)
+                               for file in files if file.lower().endswith(('png', 'jpg', 'jpeg'))]
                 st.success(f"✅ Found {len(image_files)} image(s).")
                 for img_path in image_files:
                     frame = cv2.imread(img_path)
@@ -174,7 +173,7 @@ def detection_system():
                             st.error(f"🚨 ALERT: {plate_text} - {encrypted_stolen_plates[hashlib.sha256(plate_text.encode()).hexdigest()]}")
                     st.image(result_frame, channels="BGR", caption=os.path.basename(img_path))
 
-# Run App
+# Entry point
 if st.session_state["authenticated"]:
     detection_system()
 else:
