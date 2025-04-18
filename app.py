@@ -8,6 +8,9 @@ import hashlib
 import os
 import zipfile
 import imghdr
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
+import av
+
 
 # Set up the Streamlit page
 st.set_page_config(page_title="Smart Number Plate Detection with Login", layout="centered", initial_sidebar_state="expanded")
@@ -138,22 +141,26 @@ def detection_system():
             cap.release()
             progress_bar.empty()
 
-    elif input_type == "Webcam":
-        st.warning("Ensure that the webcam is connected.")
-        if st.button("Start Webcam"):
-            cap = cv2.VideoCapture(0)
-            stframe = st.empty()
-            while True:
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                detections = detect_number_plate(frame, conf_threshold)
-                result_frame = draw_detections(frame, detections)
-                for _, _, _, _, plate_text, is_stolen in detections:
-                    if is_stolen:
-                        st.error(f"🚨 ALERT: {plate_text} - {encrypted_stolen_plates[hashlib.sha256(plate_text.encode()).hexdigest()]}")
-                stframe.image(result_frame, channels="BGR")
-            cap.release()
+        elif input_type == "Webcam":
+        st.subheader("📷 Real-time Detection via Webcam")
+
+        class PlateDetectionTransformer(VideoTransformerBase):
+            def __init__(self):
+                self.model = st.session_state["model"]
+                self.reader = st.session_state["reader"]
+
+            def transform(self, frame: av.VideoFrame) -> av.VideoFrame:
+                img = frame.to_ndarray(format="bgr24")
+                detections = detect_number_plate(img, conf_threshold)
+                result_img = draw_detections(img, detections)
+                return av.VideoFrame.from_ndarray(result_img, format="bgr24")
+
+        webrtc_streamer(
+            key="number-plate",
+            video_transformer_factory=PlateDetectionTransformer,
+            media_stream_constraints={"video": True, "audio": False},
+            async_transform=True,
+        )
 
     elif input_type == "Directory (ZIP)":
         uploaded_zip = st.file_uploader("Upload a ZIP file of images", type=["zip"])
