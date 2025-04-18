@@ -8,9 +8,10 @@ import hashlib
 import os
 import zipfile
 import imghdr
+import streamlit.components.v1 as components
 
 # Set up the Streamlit page
-st.set_page_config(page_title="Smart Number Plate Detection with Login", layout="centered", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Smart Number Plate Detection with Browser Webcam", layout="centered", initial_sidebar_state="expanded")
 
 # Initialize session state
 if "authenticated" not in st.session_state:
@@ -86,6 +87,44 @@ def draw_detections(frame, detections):
         cv2.putText(frame, plate_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
     return frame
 
+# Browser-based webcam component (HTML)
+def browser_webcam_component():
+    st.title("Webcam Feed")
+    webcam_html = """
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <style>
+          video {
+            max-width: 100%;
+            max-height: 100%;
+            border: 1px solid black;
+          }
+        </style>
+      </head>
+      <body>
+        <h3>Webcam Feed</h3>
+        <video id="webcam" autoplay></video>
+        <script>
+          const webcam = document.getElementById('webcam');
+          if (navigator.mediaDevices.getUserMedia) {
+            navigator.mediaDevices.getUserMedia({ video: true })
+              .then(stream => {
+                webcam.srcObject = stream;
+              })
+              .catch(error => {
+                console.error('Error accessing webcam:', error);
+              });
+          } else {
+            console.error('WebRTC not supported by this browser.');
+          }
+        </script>
+      </body>
+    </html>
+    """
+    components.html(webcam_html, height=300)
+    st.warning("Webcam functionality is limited to viewing only. To process frames, upload video files or images.")
+
 # Main detection UI logic
 def detection_system():
     st.title("🚘 Smart Number Plate Detection System")
@@ -96,7 +135,7 @@ def detection_system():
         st.session_state["reader"] = easyocr.Reader(['en'])
 
     st.sidebar.header("Choose Input Mode")
-    input_type = st.sidebar.radio("Select input type", ["Image", "Video", "Webcam", "Directory (ZIP)"])
+    input_type = st.sidebar.radio("Select input type", ["Image", "Video", "Browser Webcam", "Directory (ZIP)"])
     conf_threshold = st.sidebar.slider("Detection Confidence", 0.25, 1.0, 0.5, 0.05)
 
     if input_type == "Image":
@@ -138,22 +177,8 @@ def detection_system():
             cap.release()
             progress_bar.empty()
 
-    elif input_type == "Webcam":
-        st.warning("Ensure that the webcam is connected.")
-        if st.button("Start Webcam"):
-            cap = cv2.VideoCapture(0)
-            stframe = st.empty()
-            while True:
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                detections = detect_number_plate(frame, conf_threshold)
-                result_frame = draw_detections(frame, detections)
-                for _, _, _, _, plate_text, is_stolen in detections:
-                    if is_stolen:
-                        st.error(f"🚨 ALERT: {plate_text} - {encrypted_stolen_plates[hashlib.sha256(plate_text.encode()).hexdigest()]}")
-                stframe.image(result_frame, channels="BGR")
-            cap.release()
+    elif input_type == "Browser Webcam":
+        browser_webcam_component()
 
     elif input_type == "Directory (ZIP)":
         uploaded_zip = st.file_uploader("Upload a ZIP file of images", type=["zip"])
