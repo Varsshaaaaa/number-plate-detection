@@ -105,15 +105,21 @@ def browser_webcam_component():
       <head>
         <style>
           video {
-            max-width: 100%;
-            max-height: 100%;
-            border: 1px solid black;
+            width: 640px;
+            height: 480px;
+            border: 2px solid black;
+          }
+          button {
+            margin-top: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
           }
         </style>
       </head>
       <body>
         <h3>Webcam Feed</h3>
         <video id="webcam" autoplay></video>
+        <br/>
         <button id="capture">Capture Frame</button>
         <script>
           const webcam = document.getElementById('webcam');
@@ -141,8 +147,9 @@ def browser_webcam_component():
       </body>
     </html>
     """
-    components.html(webcam_html, height=400)
+    components.html(webcam_html, height=600)
     st.warning("Webcam functionality is limited to viewing and capturing. Use video or image upload for automated processing.")
+
 
 # Main detection UI logic
 def detection_system():
