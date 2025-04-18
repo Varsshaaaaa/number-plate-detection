@@ -1,13 +1,12 @@
 import streamlit as st
-import base64
-import io
 import numpy as np
 import cv2
-from PIL import Image
 import easyocr
 from ultralytics import YOLO
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
+import hashlib
 
-# Initialize Streamlit session state
+# Initialize session state
 if "model" not in st.session_state:
     st.session_state["model"] = YOLO("yolov8n.pt")  # Load YOLO model
 if "reader" not in st.session_state:
@@ -35,100 +34,34 @@ def draw_detections(frame, detections):
         cv2.putText(frame, plate_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
     return frame
 
-# JavaScript + HTML for webcam capture
-def capture_webcam():
-    st.title("Webcam Access for Number Plate Detection")
+# Class for handling webcam capture and frame processing
+class VideoTransformer(VideoTransformerBase):
+    def __init__(self):
+        self.conf_threshold = 0.5
 
-    # HTML and JavaScript for webcam integration
-    webcam_html = """
-    <html>
-    <head>
-        <style>
-            video {
-                width: 100%;
-                height: auto;
-            }
-            #captureButton {
-                font-size: 20px;
-                padding: 10px;
-                background-color: #4CAF50;
-                color: white;
-                border: none;
-                cursor: pointer;
-                margin-top: 20px;
-            }
-        </style>
-    </head>
-    <body>
-        <h3>Webcam Stream</h3>
-        <video id="webcam" autoplay></video>
-        <br>
-        <button id="captureButton">Capture Frame</button>
+    def transform(self, frame):
+        # Convert the frame to an OpenCV-compatible format
+        img = frame.to_ndarray(format="bgr24")
 
-        <script>
-            const webcam = document.getElementById('webcam');
-            const captureButton = document.getElementById('captureButton');
-            const canvas = document.createElement('canvas');
-            canvas.style.display = 'none';
-            document.body.appendChild(canvas);
+        # Process the frame to detect number plates
+        detections = detect_number_plate(img, self.conf_threshold)
+        result_frame = draw_detections(img, detections)
 
-            // Access webcam
-            navigator.mediaDevices.getUserMedia({ video: true })
-                .then((stream) => {
-                    webcam.srcObject = stream;
-                })
-                .catch((error) => {
-                    console.error("Error accessing webcam: ", error);
-                });
+        return result_frame
 
-            // Capture frame and send data to Streamlit
-            captureButton.addEventListener('click', () => {
-                canvas.width = webcam.videoWidth;
-                canvas.height = webcam.videoHeight;
-                const context = canvas.getContext('2d');
-                context.drawImage(webcam, 0, 0, canvas.width, canvas.height);
-                const imageData = canvas.toDataURL('image/jpeg').split(',')[1]; // Base64 image data
-                window.parent.postMessage({ type: 'image', data: imageData }, '*');
-            });
-        </script>
-    </body>
-    </html>
-    """
-    # Display the HTML content in Streamlit
-    st.components.v1.html(webcam_html, height=500)
+# Streamlit App Layout
+st.title("🚘 Smart Number Plate Detection System")
 
-    # Get image data from JavaScript
-    image_data = st.experimental_get_query_params().get('image')
-    if image_data:
-        # Decode the Base64 image data
-        img_data = base64.b64decode(image_data[0])
-        img = Image.open(io.BytesIO(img_data))
-        frame = np.array(img)
+# Sidebar for settings
+st.sidebar.header("Settings")
+conf_threshold = st.sidebar.slider("Detection Confidence", 0.25, 1.0, 0.5, 0.05)
 
-        # Detect number plates
-        detections = detect_number_plate(frame)
-        result_frame = draw_detections(frame, detections)
+# Capture the video stream from the webcam
+st.sidebar.header("Webcam Stream")
+webrtc_streamer(key="example", video_transformer_factory=VideoTransformer)
 
-        # Display processed image
-        st.image(result_frame, channels="BGR", caption="Processed Image with Number Plate Detection")
-
-# Main detection UI logic
-def detection_system():
-    st.title("🚘 Smart Number Plate Detection System")
-
-    input_type = st.sidebar.radio("Select Input Type", ["Webcam", "Upload Image"])
-    conf_threshold = st.sidebar.slider("Detection Confidence", 0.25, 1.0, 0.5, 0.05)
-
-    if input_type == "Webcam":
-        capture_webcam()
-    elif input_type == "Upload Image":
-        uploaded_image = st.file_uploader("Upload an Image", type=["jpg", "jpeg", "png"])
-        if uploaded_image:
-            file_bytes = np.asarray(bytearray(uploaded_image.read()), dtype=np.uint8)
-            frame = cv2.imdecode(file_bytes, 1)
-            detections = detect_number_plate(frame, conf_threshold)
-            result_frame = draw_detections(frame, detections)
-            st.image(result_frame, channels="BGR", caption="Processed Image")
-
-# Run the detection system
-detection_system()
+# Display information about detected number plates
+st.markdown("""
+    This system will capture video from your webcam and attempt to detect vehicle number plates in real-time. 
+    If a number plate is detected, it will be highlighted with a bounding box and displayed with the plate number.
+""")
